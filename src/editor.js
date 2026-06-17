@@ -9,6 +9,7 @@
 (function (global) {
   'use strict';
   const Model = (global.HE && global.HE.Model);
+  const UU = () => global.HE.UIUnits;
 
   const NODE_R = 16;
   const VEL_OK = 7,
@@ -365,10 +366,11 @@
       // label
       if (this.showResults && this.results && this.results.links[l.id]) {
         const r = this.results.links[l.id];
+        const u = UU();
         let label;
         if (r.closed) label = 'CLOSED';
-        else if (l.type === 'pump') label = `${Math.abs(r.flow).toFixed(0)} gpm · +${(r.pumpHead || 0).toFixed(0)} ft`;
-        else label = `${Math.abs(r.flow).toFixed(0)} gpm · ${Math.abs(r.velocity).toFixed(1)} ft/s`;
+        else if (l.type === 'pump') label = `${u.fmt('flow', Math.abs(r.flow), 0)} · +${u.fmt('head', r.pumpHead || 0, 0)}`;
+        else label = `${u.fmt('flow', Math.abs(r.flow), 0)} · ${u.fmt('velocity', Math.abs(r.velocity), 1)}`;
         this._tag(ctx, mx, my - 16, label, r.closed ? '#9aa4b2' : '#33414f');
       } else if (l.name) {
         this._tag(ctx, mx, my - 16, l.name, '#7a8696');
@@ -496,7 +498,7 @@
 
       if (this.showResults && this.results && this.results.nodes[n.id]) {
         const pr = this.results.nodes[n.id];
-        this._tag(ctx, p.x, p.y + (n.type === 'junction' ? r * 0.5 + 22 : r + 26), `${pr.pressure.toFixed(0)} psig`, '#1f6f43', true);
+        this._tag(ctx, p.x, p.y + (n.type === 'junction' ? r * 0.5 + 22 : r + 26), UU().fmt('pressure', pr.pressure, 0), '#1f6f43', true);
       }
     }
 

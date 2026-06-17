@@ -5,7 +5,7 @@
 (function (global) {
   'use strict';
   const HE = global.HE;
-  const { Model, Editor, Steady, Surge, Fluids, Fittings, Charts, Units } = HE;
+  const { Model, Editor, Steady, Surge, Fluids, Fittings, Charts, Units, UIUnits } = HE;
 
   let net = Model.newNetwork();
   let editor;
@@ -73,6 +73,18 @@
     $('example-select').onchange = (e) => {
       if (e.target.value) loadExample(e.target.value);
     };
+    $('btn-units').onclick = () => {
+      UIUnits.set(UIUnits.isSI() ? 'US' : 'SI');
+      $('btn-units').textContent = UIUnits.system;
+      $('btn-units').classList.toggle('primary', UIUnits.isSI());
+      renderFluid();
+      if (editor.selection) onSelect(editor.selection);
+      else onSelect(null);
+      renderResults();
+      editor.draw();
+      setStatus('Display units: ' + (UIUnits.isSI() ? 'SI (barg, m³/h, m/s, m, mm)' : 'US (psig, gpm, ft/s, ft, in)'));
+    };
+    $('btn-csv').onclick = exportCsv;
     document.addEventListener('keydown', (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
       if (e.key === 'Delete' || e.key === 'Backspace') editor.deleteSelection();
@@ -123,7 +135,7 @@
     presetSel.appendChild(el('option', { value: '' }, ['— preset —']));
     for (const k in Fluids.PRESETS) presetSel.appendChild(el('option', { value: k }, [Fluids.PRESETS[k].name]));
     host.appendChild(fieldRow('Fluid preset', presetSel));
-    host.appendChild(numField('Density (lb/ft³)', net.fluid.density, (v) => (net.fluid.density = v)));
+    host.appendChild(dimField('Density', 'density', net.fluid.density, (v) => (net.fluid.density = v)));
     host.appendChild(numField('Viscosity (cP)', net.fluid.viscosity, (v) => (net.fluid.viscosity = v)));
     host.appendChild(numField('Bulk modulus (psi)', net.fluid.bulkModulus, (v) => (net.fluid.bulkModulus = v)));
   }
@@ -162,7 +174,7 @@
       ([v, t]) => typeSel.appendChild(el('option', { value: v, ...(n.type === v ? { selected: 'selected' } : {}) }, [t]))
     );
     card.appendChild(fieldRow('Type', typeSel));
-    card.appendChild(numField('Elevation (ft)', n.elevation, (v) => (n.elevation = v)));
+    card.appendChild(dimField('Elevation', 'length', n.elevation, (v) => (n.elevation = v)));
 
     if (n.type === 'supply') {
       const modeSel = el('select', {
@@ -177,19 +189,19 @@
         modeSel.appendChild(el('option', { value: v, ...(n.bcMode === v ? { selected: 'selected' } : {}) }, [t]))
       );
       card.appendChild(fieldRow('Boundary', modeSel));
-      if (n.bcMode === 'head') card.appendChild(numField('Pressure (psig)', n.pressure, (v) => (n.pressure = v)));
-      if (n.bcMode === 'flow') card.appendChild(numField('Inflow (gpm, + into system)', n.flow, (v) => (n.flow = v)));
+      if (n.bcMode === 'head') card.appendChild(dimField('Pressure', 'pressure', n.pressure, (v) => (n.pressure = v)));
+      if (n.bcMode === 'flow') card.appendChild(dimField('Inflow (+ into system)', 'flow', n.flow, (v) => (n.flow = v)));
       if (n.bcMode === 'pi') {
-        card.appendChild(numField('Reservoir pressure (psig)', n.resPressure, (v) => (n.resPressure = v)));
+        card.appendChild(dimField('Reservoir pressure', 'pressure', n.resPressure, (v) => (n.resPressure = v)));
         card.appendChild(numField('Productivity index (gpm/psi)', n.pi, (v) => (n.pi = v)));
-        card.appendChild(el('div', { class: 'hint' }, ['Inflow = PI × (reservoir − wellhead pressure)']));
+        card.appendChild(el('div', { class: 'hint' }, ['Inflow = PI × (reservoir − wellhead pressure). PI stays in gpm/psi.']));
       }
     } else if (n.type === 'injection') {
-      card.appendChild(numField('Injection (reservoir) pressure (psig)', n.resPressure, (v) => (n.resPressure = v)));
+      card.appendChild(dimField('Injection (reservoir) pressure', 'pressure', n.resPressure, (v) => (n.resPressure = v)));
       card.appendChild(numField('Injectivity index (gpm/psi)', n.ii, (v) => (n.ii = v)));
-      card.appendChild(el('div', { class: 'hint' }, ['Injection rate = II × (wellhead − reservoir pressure)']));
+      card.appendChild(el('div', { class: 'hint' }, ['Injection rate = II × (wellhead − reservoir pressure). II stays in gpm/psi.']));
     } else {
-      card.appendChild(numField('Demand (gpm, − to draw off)', n.demand, (v) => (n.demand = v)));
+      card.appendChild(dimField('Demand (− to draw off)', 'flow', n.demand, (v) => (n.demand = v)));
     }
     host.appendChild(card);
 
@@ -197,8 +209,8 @@
       const r = lastResults.nodes[n.id];
       const rc = el('div', { class: 'card result' });
       rc.appendChild(el('h3', {}, ['Result']));
-      rc.appendChild(kv('Pressure', `${r.pressure.toFixed(1)} psig`));
-      rc.appendChild(kv('Head', `${r.head.toFixed(1)} ft`));
+      rc.appendChild(kv('Pressure', UIUnits.fmt('pressure', r.pressure, 1)));
+      rc.appendChild(kv('Head', UIUnits.fmt('head', r.head, 1)));
       host.appendChild(rc);
     }
   }
@@ -251,8 +263,8 @@
       const sizeRow = el('div', { class: 'row2' }, [labeled('Nominal', nomSel), labeled('Schedule', schSel)]);
       card.appendChild(sizeRow);
 
-      card.appendChild(numField('Inside diameter (in)', round(l.diameter, 3), (v) => (l.diameter = v)));
-      card.appendChild(numField('Length (ft)', l.length, (v) => (l.length = v)));
+      card.appendChild(dimField('Inside diameter', 'diameter', round(l.diameter, 3), (v) => (l.diameter = v)));
+      card.appendChild(dimField('Length', 'length', l.length, (v) => (l.length = v)));
 
       const matSel = el('select', {
         onchange: (e) => {
@@ -275,7 +287,7 @@
       card.appendChild(el('div', { class: 'hint' }, ['Double-click a valve on the canvas to toggle open/closed. Use “Surge” to study closing this valve.']));
       host.appendChild(card);
     } else if (l.type === 'pump') {
-      card.appendChild(el('div', { class: 'hint' }, ['Performance curve — head (ft) vs flow (gpm). Add points; a quadratic is fit through them.']));
+      card.appendChild(el('div', { class: 'hint' }, [`Performance curve — head (${UIUnits.unit('head')}) vs flow (${UIUnits.unit('flow')}). Add points; a quadratic is fit through them.`]));
       host.appendChild(card);
       host.appendChild(buildPumpCurve(l));
     }
@@ -286,12 +298,12 @@
       rc.appendChild(el('h3', {}, ['Result']));
       if (r.closed) rc.appendChild(kv('Status', 'CLOSED'));
       else {
-        rc.appendChild(kv('Flow', `${r.flow.toFixed(1)} gpm`));
+        rc.appendChild(kv('Flow', UIUnits.fmt('flow', r.flow, 1)));
         if (l.type !== 'pump')
-          rc.appendChild(kv('Velocity', `${Math.abs(r.velocity).toFixed(2)} ft/s`, Math.abs(r.velocity) > 12 ? 'bad' : Math.abs(r.velocity) > 7 ? 'warn' : 'good'));
-        rc.appendChild(kv('ΔP', `${r.dP.toFixed(2)} psi`));
-        if (l.type !== 'pump') rc.appendChild(kv('ΔP / 100ft', `${r.dP100.toFixed(2)} psi`));
-        if (l.type === 'pump') rc.appendChild(kv('Pump head', `${r.pumpHead.toFixed(1)} ft`));
+          rc.appendChild(kv('Velocity', UIUnits.fmt('velocity', Math.abs(r.velocity), 2), Math.abs(r.velocity) > 12 ? 'bad' : Math.abs(r.velocity) > 7 ? 'warn' : 'good'));
+        rc.appendChild(kv('ΔP', UIUnits.fmt('pressure', r.dP, 2).replace('g ', ' ')));
+        if (l.type !== 'pump') rc.appendChild(kv('ΔP gradient', UIUnits.fmt('gradient', r.dP100, 2)));
+        if (l.type === 'pump') rc.appendChild(kv('Pump head', UIUnits.fmt('head', r.pumpHead, 1)));
         rc.appendChild(kv('Reynolds', `${r.Re.toExponential(2)}`));
         rc.appendChild(kv('Friction f', `${r.f.toFixed(4)}`));
       }
@@ -339,25 +351,25 @@
       const fitPts = [];
       for (let i = 0; i <= 30; i++) {
         const q = (qmax * i) / 30;
-        fitPts.push([q, fit.c0 + fit.c1 * q + fit.c2 * q * q]);
+        fitPts.push([UIUnits.disp('flow', q), UIUnits.disp('head', fit.c0 + fit.c1 * q + fit.c2 * q * q)]);
       }
       Charts.lineChart(canvas, {
         title: 'Pump head vs flow',
-        xlabel: 'Flow (gpm)',
-        ylabel: 'Head (ft)',
+        xlabel: `Flow (${UIUnits.unit('flow')})`,
+        ylabel: `Head (${UIUnits.unit('head')})`,
         series: [
           { name: 'fit', color: '#7c4dff', points: fitPts },
-          { name: 'pts', color: '#1746a2', points: l.curve.map((p) => [p.q, p.h]), dots: true, width: 0 },
+          { name: 'pts', color: '#1746a2', points: l.curve.map((p) => [UIUnits.disp('flow', p.q), UIUnits.disp('head', p.h)]), dots: true, width: 0 },
         ],
       });
     };
     const rebuild = () => {
       list.innerHTML = '';
       l.curve.forEach((p, i) => {
-        const q = el('input', { type: 'number', value: p.q, step: '50', class: 'qty wide', onchange: (e) => { p.q = +e.target.value; redraw(); markDirty(); } });
-        const h = el('input', { type: 'number', value: p.h, step: '5', class: 'qty wide', onchange: (e) => { p.h = +e.target.value; redraw(); markDirty(); } });
+        const q = el('input', { type: 'number', value: round(UIUnits.disp('flow', p.q), 3), step: 'any', class: 'qty wide', onchange: (e) => { p.q = UIUnits.parse('flow', +e.target.value); redraw(); markDirty(); } });
+        const h = el('input', { type: 'number', value: round(UIUnits.disp('head', p.h), 3), step: 'any', class: 'qty wide', onchange: (e) => { p.h = UIUnits.parse('head', +e.target.value); redraw(); markDirty(); } });
         const del = el('button', { class: 'mini danger', onclick: () => { l.curve.splice(i, 1); rebuild(); redraw(); markDirty(); } }, ['✕']);
-        list.appendChild(el('div', { class: 'fit-row' }, [labeled('Q gpm', q), labeled('H ft', h), del]));
+        list.appendChild(el('div', { class: 'fit-row' }, [labeled(`Q ${UIUnits.unit('flow')}`, q), labeled(`H ${UIUnits.unit('head')}`, h), del]));
       });
     };
     rebuild();
@@ -408,18 +420,19 @@
     // link table
     const card = el('div', { class: 'card' });
     card.appendChild(el('h3', {}, ['Pipe / device results']));
+    const U = UIUnits;
     const tbl = el('table', { class: 'data' });
-    tbl.appendChild(rowEl('th', ['Segment', 'Flow gpm', 'Vel ft/s', 'ΔP psi', 'ΔP/100ft']));
+    tbl.appendChild(rowEl('th', ['Segment', `Flow ${U.unit('flow')}`, `Vel ${U.unit('velocity')}`, `ΔP ${U.unit('pressure').replace('g', '')}`, `ΔP ${U.unit('gradient')}`]));
     for (const l of net.links) {
       const r = lastResults.links[l.id];
       if (!r) continue;
       const vcls = r.closed ? '' : Math.abs(r.velocity) > 12 ? 'bad' : Math.abs(r.velocity) > 7 ? 'warn' : 'good';
       const tr = rowEl('td', [
         nameOf(l),
-        r.closed ? '—' : r.flow.toFixed(1),
-        r.closed ? 'CLOSED' : l.type === 'pump' ? '—' : Math.abs(r.velocity).toFixed(2),
-        r.closed ? '—' : r.dP.toFixed(2),
-        r.closed || l.type === 'pump' ? '—' : r.dP100.toFixed(2),
+        r.closed ? '—' : U.val('flow', r.flow, 1),
+        r.closed ? 'CLOSED' : l.type === 'pump' ? '—' : U.val('velocity', Math.abs(r.velocity), 2),
+        r.closed ? '—' : U.val('pressure', r.dP, 2),
+        r.closed || l.type === 'pump' ? '—' : U.val('gradient', r.dP100, 2),
       ]);
       if (vcls) tr.children[2].className = vcls;
       tr.onclick = () => editor.select('link', l.id);
@@ -433,11 +446,11 @@
     const ncard = el('div', { class: 'card' });
     ncard.appendChild(el('h3', {}, ['Node pressures']));
     const nt = el('table', { class: 'data' });
-    nt.appendChild(rowEl('th', ['Node', 'Pressure psig', 'Head ft']));
+    nt.appendChild(rowEl('th', ['Node', `Pressure ${U.unit('pressure')}`, `Head ${U.unit('head')}`]));
     for (const n of net.nodes) {
       const r = lastResults.nodes[n.id];
       if (!r) continue;
-      const tr = rowEl('td', [nodeLabel(n), r.pressure.toFixed(1), r.head.toFixed(1)]);
+      const tr = rowEl('td', [nodeLabel(n), U.val('pressure', r.pressure, 1), U.val('head', r.head, 1)]);
       tr.onclick = () => editor.select('node', n.id);
       tr.style.cursor = 'pointer';
       nt.appendChild(tr);
@@ -530,43 +543,104 @@
     const mawp = num('sg-mawp');
     drawSurge(res, mawp);
 
+    // comparisons stay in internal psi; display converts to the active system
     const peak = res.maxPressure;
     const rise = peak - res.steadyPressValve;
     const min = res.minPressure;
+    const U = UIUnits;
+    const pUnit = U.unit('pressure'); // gauge (psig / barg)
+    const dUnit = pUnit.replace('g', ''); // delta (psi / bar)
+    const P = (psi) => `${U.disp('pressure', psi).toFixed(U.isSI() ? 1 : 0)} ${pUnit}`;
+    const dP = (psi) => `${U.disp('pressure', psi).toFixed(U.isSI() ? 2 : 0)} ${dUnit}`;
     const out = $('surge-summary');
     out.innerHTML = '';
     const add = (k, v, cls) => out.appendChild(kv(k, v, cls));
-    add('Wave speed a', `${res.a.toFixed(0)} ft/s`);
+    add('Wave speed a', U.fmt('velocity', res.a, 0));
     add('Pipe period 2L/a', `${res.pipePeriod.toFixed(2)} s`);
     add('Closure vs period', res.pipePeriod > 0 ? `${(opts.closeTime / res.pipePeriod).toFixed(1)} × (rapid if <1)` : '—');
-    add('Steady pressure', `${res.steadyPressValve.toFixed(0)} psig`);
-    add('Peak surge pressure', `${peak.toFixed(0)} psig`, peak > mawp ? 'bad' : 'good');
-    add('Surge rise', `+${rise.toFixed(0)} psi`);
-    add('Min pressure', `${min.toFixed(0)} psig`, min < 0 ? 'warn' : 'good');
-    add('Joukowsky (instant) bound', `+${res.joukowskyDP.toFixed(0)} psi`);
+    add('Steady pressure', P(res.steadyPressValve));
+    add('Peak surge pressure', P(peak), peak > mawp ? 'bad' : 'good');
+    add('Surge rise', '+' + dP(rise));
+    add('Min pressure', P(min), min < 0 ? 'warn' : 'good');
+    add('Joukowsky (instant) bound', '+' + dP(res.joukowskyDP));
     if (res.columnSeparation) add('⚠ Column separation', 'pressure hit vapor — risk of cavitation', 'bad');
     const margin = mawp - peak;
+    const reliefLo = res.steadyPressValve * 1.1;
     const verdict =
       peak > mawp
-        ? `Peak surge ${peak.toFixed(0)} psig EXCEEDS MAWP ${mawp} psig by ${(peak - mawp).toFixed(0)} psi — slow the closure, add a relief valve, or use a higher pressure class.`
-        : `Peak surge ${peak.toFixed(0)} psig is within MAWP ${mawp} psig (margin ${margin.toFixed(0)} psi). A relief valve set ≈ ${(res.steadyPressValve + 0.1 * res.steadyPressValve).toFixed(0)}–${Math.min(mawp, peak).toFixed(0)} psig (≈10% over operating, ≤ MAWP) would relieve this transient.`;
+        ? `Peak surge ${P(peak)} EXCEEDS MAWP ${P(mawp)} by ${dP(peak - mawp)} — slow the closure, add a relief valve, or use a higher pressure class.`
+        : `Peak surge ${P(peak)} is within MAWP ${P(mawp)} (margin ${dP(margin)}). A relief valve set ≈ ${P(reliefLo)}–${P(Math.min(mawp, peak))} (≈10% over operating, ≤ MAWP) would relieve this transient.`;
     out.appendChild(el('div', { class: 'verdict ' + (peak > mawp ? 'bad' : 'good') }, [verdict]));
   }
 
   function drawSurge(res, mawp) {
     const canvas = $('surge-chart');
-    const pts = res.time.map((t, i) => [t, res.pressValve[i]]);
+    const U = UIUnits;
+    const pts = res.time.map((t, i) => [t, U.disp('pressure', res.pressValve[i])]);
     Charts.lineChart(canvas, {
       title: 'Pressure at valve vs time',
       xlabel: 'Time (s)',
-      ylabel: 'Pressure (psig)',
+      ylabel: `Pressure (${U.unit('pressure')})`,
       legend: false,
       series: [{ name: 'valve', color: '#d4506a', points: pts, width: 1.6 }],
       markers: [
-        { y: mawp, color: '#d12', label: `MAWP ${mawp} psig` },
-        { y: res.steadyPressValve, color: '#2b88d8', label: 'steady' },
+        { y: U.disp('pressure', mawp), color: '#d12', label: `MAWP ${U.fmt('pressure', mawp, 0)}` },
+        { y: U.disp('pressure', res.steadyPressValve), color: '#2b88d8', label: 'steady' },
       ],
     });
+  }
+
+  // ---------- CSV export ----------
+  function exportCsv() {
+    if (!lastResults) {
+      setStatus('Run the model first, then export CSV.', 'bad');
+      return;
+    }
+    const U = UIUnits;
+    const esc = (s) => {
+      const t = String(s);
+      return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+    };
+    const lines = [];
+    lines.push(`# HydroStick results — ${net.meta.name || 'system'}`);
+    lines.push(`# units: ${U.system}`);
+    lines.push('');
+    lines.push('SEGMENTS');
+    lines.push(['Name', 'Type', 'From', 'To', `Flow ${U.unit('flow')}`, `Velocity ${U.unit('velocity')}`, `dP ${U.unit('pressure').replace('g', '')}`, `dP ${U.unit('gradient')}`, 'Reynolds', 'Friction f', 'Status'].map(esc).join(','));
+    for (const l of net.links) {
+      const r = lastResults.links[l.id];
+      if (!r) continue;
+      const closed = r.closed;
+      lines.push(
+        [
+          nameOf(l),
+          l.type,
+          nodeLabel(Model.nodeById(net, l.from)),
+          nodeLabel(Model.nodeById(net, l.to)),
+          closed ? '' : U.val('flow', r.flow, 2),
+          closed || l.type === 'pump' ? '' : U.val('velocity', Math.abs(r.velocity), 3),
+          closed ? '' : U.val('pressure', r.dP, 3),
+          closed || l.type === 'pump' ? '' : U.val('gradient', r.dP100, 3),
+          closed ? '' : r.Re.toFixed(0),
+          closed ? '' : r.f.toFixed(4),
+          closed ? 'CLOSED' : 'open',
+        ].map(esc).join(',')
+      );
+    }
+    lines.push('');
+    lines.push('NODES');
+    lines.push(['Name', 'Type', `Pressure ${U.unit('pressure')}`, `Head ${U.unit('head')}`].map(esc).join(','));
+    for (const n of net.nodes) {
+      const r = lastResults.nodes[n.id];
+      if (!r) continue;
+      lines.push([nodeLabel(n), n.type, U.val('pressure', r.pressure, 2), U.val('head', r.head, 2)].map(esc).join(','));
+    }
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = (net.meta.name || 'system').replace(/\s+/g, '_') + '_results.csv';
+    a.click();
+    setStatus('Exported ' + a.download);
   }
 
   // ---------- save / load ----------
@@ -623,6 +697,15 @@
   function numField(label, value, set) {
     const inp = el('input', { type: 'number', value: value, step: 'any', onchange: (e) => { set(parseFloat(e.target.value)); markDirty(); editor.draw(); } });
     return fieldRow(label, inp);
+  }
+  // Dimensional field: stores in internal US units, displays/parses in active system.
+  function dimField(label, quantity, rawValue, setRaw) {
+    const disp = round(UIUnits.disp(quantity, rawValue), 4);
+    const inp = el('input', {
+      type: 'number', value: disp, step: 'any',
+      onchange: (e) => { setRaw(UIUnits.parse(quantity, parseFloat(e.target.value))); markDirty(); editor.draw(); },
+    });
+    return fieldRow(`${label} (${UIUnits.unit(quantity)})`, inp);
   }
   function textField(label, value, set) {
     const inp = el('input', { type: 'text', value: value || '', onchange: (e) => { set(e.target.value); markDirty(); editor.draw(); } });

@@ -9,8 +9,9 @@ with an injectivity index), solve the **steady-state** hydraulics, then close a 
 watch the **pressure-wave transient** to size MAWP and relief valves.
 
 It was built around the Fervo *Cape* geothermal brine hydraulic analysis
-(`010000-PRR-001`, modeled in PIPE-FLO), and ships with a demonstration model of the
-**Bearskin well pad**.
+(`010000-PRR-001`, modeled in PIPE-FLO), and ships with demonstration models of all three
+well pads — **Bearskin, Gold, and Frisco**. Display units switch between **US and SI** with
+one click, and results export to **CSV**.
 
 ---
 
@@ -74,6 +75,18 @@ PI inflow = `PI × (reservoir − wellhead pressure)`.
   (cavitation) flag, and a plain-language MAWP / relief-valve verdict. The MAWP default is the
   nearest ANSI B16.5 flange class above the operating pressure.
 
+### Units & export
+- **US ↔ SI toggle** (toolbar). The model and solver always run in internal US units; the
+  toggle only changes what's displayed and how inputs are parsed: US (`psig, gpm, ft/s, ft,
+  in, lb/ft³`) ↔ SI (`barg, m³/h, m/s, m, mm, kg/m³`). Compound coefficients (Cv, PI, II) and
+  viscosity (cP) stay in their conventional units, clearly labelled.
+- **CSV export** of the steady-state segment and node tables, in the active unit system.
+
+### Example models
+Three preloaded pads from the report, selectable from the **Examples** menu — **Bearskin**
+(5 inj / 4 prod), **Gold** (3 inj / 4 prod), **Frisco** (5 inj / 3 prod). Each has a control
+valve placed on its largest injection branch so you can jump straight into a surge study.
+
 ---
 
 ## Keyboard / canvas
@@ -106,8 +119,9 @@ src/
   steady.js            steady-state nodal solver  (node-testable)
   surge.js             Method-of-Characteristics transient  (node-testable)
   charts.js            tiny canvas line-chart helper
+  uiunits.js           US/SI display-unit conversion layer
   editor.js            schematic canvas (draw/select/drag, result overlay)
-  examples.js          preloaded Bearskin-pad demo model
+  examples.js          preloaded Bearskin / Gold / Frisco pad demos
   app.js               UI: toolbar, property editor, results, surge dialog
 test/test.js           physics sanity tests (hand-calc & Joukowsky checks)
 ```

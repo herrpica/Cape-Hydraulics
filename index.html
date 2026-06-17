@@ -39,10 +39,16 @@
           <button id="btn-run" class="primary" title="Solve steady state (R)">▶ Run</button>
           <button id="btn-surge" class="accent" title="Surge / waterhammer">〜 Surge</button>
         </div>
+        <div class="tgroup">
+          <button id="btn-units" title="Toggle US / SI display units">US</button>
+          <button id="btn-csv" title="Export results to CSV">⤓ CSV</button>
+        </div>
         <div class="tgroup right">
           <select id="example-select" title="Load example">
             <option value="">Examples…</option>
             <option value="bearskin">Bearskin pad (demo)</option>
+            <option value="gold">Gold pad (demo)</option>
+            <option value="frisco">Frisco pad (demo)</option>
           </select>
           <button id="btn-new" title="New empty model">New</button>
           <button id="btn-save" title="Save .json">Save</button>
@@ -129,6 +135,7 @@
 
     <!-- engine (plain scripts; no build step, runs from file://) -->
     <script src="src/units.js"></script>
+    <script src="src/uiunits.js"></script>
     <script src="src/fluids.js"></script>
     <script src="src/fittings.js"></script>
     <script src="src/model.js"></script>
