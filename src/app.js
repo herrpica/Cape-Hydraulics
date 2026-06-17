@@ -85,6 +85,7 @@
       setStatus('Display units: ' + (UIUnits.isSI() ? 'SI (barg, m³/h, m/s, m, mm)' : 'US (psig, gpm, ft/s, ft, in)'));
     };
     $('btn-csv').onclick = exportCsv;
+    $('btn-report').onclick = openReport;
     document.addEventListener('keydown', (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
       if (e.key === 'Delete' || e.key === 'Backspace') editor.deleteSelection();
@@ -641,6 +642,198 @@
     a.download = (net.meta.name || 'system').replace(/\s+/g, '_') + '_results.csv';
     a.click();
     setStatus('Exported ' + a.download);
+  }
+
+  // ---------- one-page report ----------
+  function openReport() {
+    if (net.nodes.length === 0) {
+      setStatus('Add a model first.', 'bad');
+      return;
+    }
+    if (!lastResults) run();
+    if (!lastResults) return;
+
+    // Capture a clean, fitted schematic image (no selection highlight).
+    const prevView = Object.assign({}, editor.view);
+    const prevSel = editor.selection;
+    editor.selection = null;
+    editor.fit();
+    editor.draw();
+    let img = '';
+    try {
+      img = editor.canvas.toDataURL('image/png');
+    } catch (e) {
+      img = '';
+    }
+    editor.selection = prevSel;
+    editor.view = prevView;
+    editor.draw();
+
+    const html = buildReportHtml(img);
+    const w = window.open('', '_blank');
+    if (w) {
+      w.document.open();
+      w.document.write(html);
+      w.document.close();
+      setStatus('Report opened — use the Print button to save as PDF.');
+    } else {
+      // popup blocked → download an .html file instead
+      const blob = new Blob([html], { type: 'text/html' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = (net.meta.name || 'system').replace(/\s+/g, '_') + '_report.html';
+      a.click();
+      setStatus('Popup blocked — downloaded the report as HTML instead.');
+    }
+  }
+
+  function buildReportHtml(img) {
+    const U = UIUnits;
+    const esc = (s) =>
+      String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const pUnit = U.unit('pressure');
+    const dUnit = pUnit.replace('g', '');
+
+    // ----- summary metrics -----
+    const prodWells = net.nodes.filter((n) => n.type === 'supply' && n.bcMode === 'flow');
+    const injWells = net.nodes.filter((n) => n.type === 'injection');
+    let maxVel = 0,
+      maxVelName = '',
+      pMin = Infinity,
+      pMax = -Infinity,
+      injTotal = 0,
+      pumps = 0;
+    for (const l of net.links) {
+      const r = lastResults.links[l.id];
+      if (!r || r.closed || l.type === 'pump') continue;
+      if (Math.abs(r.velocity) > maxVel) {
+        maxVel = Math.abs(r.velocity);
+        maxVelName = nameOf(l);
+      }
+    }
+    for (const l of net.links) if (l.type === 'pump') pumps++;
+    for (const n of net.nodes) {
+      const r = lastResults.nodes[n.id];
+      if (!r) continue;
+      pMin = Math.min(pMin, r.pressure);
+      pMax = Math.max(pMax, r.pressure);
+    }
+    for (const n of injWells) {
+      const link = net.links.find((l) => l.to === n.id || l.from === n.id);
+      if (link && lastResults.links[link.id]) injTotal += Math.abs(lastResults.links[link.id].flow);
+    }
+
+    const warns = [];
+    for (const l of net.links) {
+      const r = lastResults.links[l.id];
+      if (r && !r.closed && Math.abs(r.velocity) > 12)
+        warns.push(`${nameOf(l)} — ${U.fmt('velocity', Math.abs(r.velocity), 1)} exceeds the 12 ft/s criterion`);
+    }
+
+    // ----- tables -----
+    let segRows = '';
+    for (const l of net.links) {
+      const r = lastResults.links[l.id];
+      if (!r) continue;
+      const closed = r.closed;
+      const vcls = closed || l.type === 'pump' ? '' : Math.abs(r.velocity) > 12 ? 'bad' : Math.abs(r.velocity) > 7 ? 'warn' : 'ok';
+      segRows += `<tr>
+        <td class="l">${esc(nameOf(l))}</td><td>${esc(l.type)}</td>
+        <td>${closed ? '—' : U.val('flow', r.flow, 1)}</td>
+        <td class="${vcls}">${closed ? 'CLOSED' : l.type === 'pump' ? '—' : U.val('velocity', Math.abs(r.velocity), 2)}</td>
+        <td>${closed ? '—' : U.val('pressure', r.dP, 2)}</td>
+        <td>${closed || l.type === 'pump' ? '—' : U.val('gradient', r.dP100, 2)}</td>
+      </tr>`;
+    }
+    let nodeRows = '';
+    for (const n of net.nodes) {
+      const r = lastResults.nodes[n.id];
+      if (!r) continue;
+      nodeRows += `<tr><td class="l">${esc(nodeLabel(n))}</td><td>${esc(n.type)}</td>
+        <td>${U.val('pressure', r.pressure, 1)}</td><td>${U.val('head', r.head, 1)}</td></tr>`;
+    }
+
+    const date = new Date().toLocaleString();
+    const fl = net.fluid;
+
+    return `<!doctype html><html><head><meta charset="utf-8"/>
+<title>${esc(net.meta.name || 'Hydraulic summary')} — HydroStick</title>
+<style>
+  @page { size: letter; margin: 14mm; }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, Segoe UI, Roboto, sans-serif; color:#1f2733; margin:0; font-size:11px; }
+  .sheet { max-width: 1000px; margin: 0 auto; padding: 18px; }
+  header { display:flex; justify-content:space-between; align-items:flex-end; border-bottom:2px solid #2b6cb0; padding-bottom:8px; }
+  header h1 { margin:0; font-size:18px; }
+  header .sub { color:#5b6573; }
+  .brand { font-weight:700; color:#7c4dff; font-size:14px; }
+  .meta { display:flex; gap:22px; flex-wrap:wrap; margin:10px 0; color:#33414f; }
+  .meta b { color:#1f2733; }
+  .cards { display:flex; gap:10px; flex-wrap:wrap; margin:10px 0; }
+  .stat { border:1px solid #e2e7ef; border-radius:8px; padding:8px 12px; min-width:120px; }
+  .stat .n { font-size:16px; font-weight:700; }
+  .stat .k { color:#5b6573; font-size:10px; text-transform:uppercase; letter-spacing:.4px; }
+  .schematic { text-align:center; margin:12px 0; }
+  .schematic img { max-width:100%; border:1px solid #e2e7ef; border-radius:8px; }
+  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.5px; color:#5b6573; border-bottom:1px solid #e2e7ef; padding-bottom:4px; margin:16px 0 6px; }
+  table { width:100%; border-collapse:collapse; }
+  th,td { text-align:right; padding:3px 6px; border-bottom:1px solid #eef1f6; }
+  th.l, td.l, th:first-child, td:first-child { text-align:left; }
+  th { color:#5b6573; border-bottom:1px solid #c4ccd8; }
+  td.ok{color:#1f6f43;} td.warn{color:#b9791f;} td.bad{color:#c5341f;font-weight:700;}
+  .warnbox { background:#fff8f0; border:1px solid #f0d8b8; border-radius:8px; padding:8px 12px; margin:10px 0; color:#b3301c; }
+  .cols { display:flex; gap:24px; align-items:flex-start; }
+  .cols > div { flex:1; }
+  footer { margin-top:18px; padding-top:8px; border-top:1px solid #e2e7ef; color:#7a8696; font-size:10px; }
+  .toolbar { position:sticky; top:0; background:#fff; padding:8px 0; text-align:right; }
+  .toolbar button { font:inherit; padding:6px 14px; border:1px solid #2b6cb0; background:#2b6cb0; color:#fff; border-radius:6px; cursor:pointer; }
+  @media print { .toolbar { display:none; } body { font-size:10px; } }
+</style></head><body><div class="sheet">
+  <div class="toolbar"><button onclick="window.print()">🖨 Print / Save as PDF</button></div>
+  <header>
+    <div><h1>${esc(net.meta.name || 'Hydraulic system')}</h1>
+      <div class="sub">Hydraulic Summary — steady state &amp; surge screening</div></div>
+    <div style="text-align:right"><div class="brand">⬡ HydroStick</div><div class="sub">${esc(date)}</div></div>
+  </header>
+
+  <div class="meta">
+    <span>Fluid: <b>${esc(fl.name || 'fluid')}</b></span>
+    <span>Density: <b>${U.fmt('density', fl.density, 1)}</b></span>
+    <span>Viscosity: <b>${esc(fl.viscosity)} cP</b></span>
+    <span>Display units: <b>${U.system}</b></span>
+  </div>
+
+  <div class="cards">
+    <div class="stat"><div class="n">${prodWells.length}</div><div class="k">Source wells</div></div>
+    <div class="stat"><div class="n">${injWells.length}</div><div class="k">Injection wells</div></div>
+    <div class="stat"><div class="n">${pumps}</div><div class="k">Pumps</div></div>
+    <div class="stat"><div class="n">${U.fmt('flow', injTotal, 0)}</div><div class="k">Total injection</div></div>
+    <div class="stat"><div class="n ${maxVel > 12 ? 'bad' : ''}">${U.fmt('velocity', maxVel, 1)}</div><div class="k">Max velocity</div></div>
+    <div class="stat"><div class="n">${isFinite(pMin) ? U.val('pressure', pMin, 0) : '—'}–${isFinite(pMax) ? U.val('pressure', pMax, 0) : '—'}</div><div class="k">Pressure range ${pUnit}</div></div>
+  </div>
+
+  ${warns.length ? `<div class="warnbox"><b>⚠ Velocity criterion (12 ft/s):</b><br/>${warns.map(esc).join('<br/>')}</div>` : ''}
+
+  <div class="schematic">${img ? `<img src="${img}" alt="schematic"/>` : '<i>(schematic unavailable)</i>'}</div>
+
+  <h2>Pipe / device results</h2>
+  <table><thead><tr>
+    <th class="l">Segment</th><th class="l">Type</th>
+    <th>Flow ${U.unit('flow')}</th><th>Vel ${U.unit('velocity')}</th>
+    <th>ΔP ${dUnit}</th><th>ΔP ${U.unit('gradient')}</th>
+  </tr></thead><tbody>${segRows}</tbody></table>
+
+  <h2>Node pressures</h2>
+  <table><thead><tr><th class="l">Node</th><th class="l">Type</th>
+    <th>Pressure ${pUnit}</th><th>Head ${U.unit('head')}</th></tr></thead>
+    <tbody>${nodeRows}</tbody></table>
+
+  <footer>
+    Generated by HydroStick — Darcy-Weisbach steady-state &amp; Method-of-Characteristics surge.
+    Velocity coloring uses the 12 ft/s main-line criterion. This is an engineering screening aid,
+    not a substitute for a stamped analysis.
+  </footer>
+</div></body></html>`;
   }
 
   // ---------- save / load ----------
