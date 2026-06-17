@@ -28,6 +28,7 @@
       this.pipeStart = null;
       this.results = null;
       this.showResults = true;
+      this.showSpecs = false; // overlay each component's input characteristics
       this.hover = null;
       this.mouse = { x: 0, y: 0, world: { x: 0, y: 0 } };
       this.onSelect = () => {};
@@ -92,7 +93,7 @@
         if (!a || !b) continue;
         const pa = this.toScreen(a.x, a.y);
         const pb = this.toScreen(b.x, b.y);
-        if (distToSeg(sx, sy, pa.x, pa.y, pb.x, pb.y) < 7) return l;
+        if (distToSeg(sx, sy, pa.x, pa.y, pb.x, pb.y) < 10) return l;
       }
       return null;
     }
@@ -374,7 +375,7 @@
       else if (l.fittings && l.fittings.length) this._glyphFittings(ctx);
       ctx.restore();
 
-      // label
+      // result / name label (above the segment)
       if (this.showResults && this.results && this.results.links[l.id]) {
         const r = this.results.links[l.id];
         const u = UU();
@@ -386,6 +387,33 @@
       } else if (l.name) {
         this._tag(ctx, mx, my - 16, l.name, '#7a8696');
       }
+
+      // input characteristics overlay (below the segment), independent of results
+      if (this.showSpecs) {
+        const lines = this._specLink(l);
+        if (lines.length) this._tagLines(ctx, mx, my + 14, lines, '#4a5563');
+      }
+    }
+
+    /** Concise input-spec lines for a link, in the active display units. */
+    _specLink(l) {
+      const u = UU();
+      if (l.type === 'valve') {
+        return [`Cv ${l.cv}`, l.closed ? 'CLOSED' : `${Math.round((l.openFraction ?? 1) * 100)}% open`];
+      }
+      if (l.type === 'pump') {
+        const c = (l.curve || [])[0];
+        return c ? ['pump', `shutoff ${u.fmt('head', c.h, 0)}`] : ['pump'];
+      }
+      // pipe / check
+      const size = `${l.nominal}" Sch ${l.sched}`;
+      const geom = `${u.fmt('length', l.length, 0)} · wall ${u.fmt('diameter', l.wall, 3)}`;
+      const lines = [size, geom];
+      if (l.fittings && l.fittings.length) {
+        const qty = l.fittings.reduce((s, f) => s + (f.qty || 1), 0);
+        lines.push(`${qty} fitting${qty === 1 ? '' : 's'}`);
+      }
+      return lines;
     }
 
     _arrow(ctx, x, y, ang, color) {
@@ -507,10 +535,32 @@
       const name = n.name || shortId(n.id);
       this._tag(ctx, p.x, p.y + r + 12, name, '#5b6573', true);
 
+      let belowY = p.y + (n.type === 'junction' ? r * 0.5 + 22 : r + 26);
       if (this.showResults && this.results && this.results.nodes[n.id]) {
         const pr = this.results.nodes[n.id];
-        this._tag(ctx, p.x, p.y + (n.type === 'junction' ? r * 0.5 + 22 : r + 26), UU().fmt('pressure', pr.pressure, 0), '#1f6f43', true);
+        this._tag(ctx, p.x, belowY, UU().fmt('pressure', pr.pressure, 0), '#1f6f43', true);
+        belowY += 14;
       }
+      // input characteristics overlay (boundary condition), independent of results
+      if (this.showSpecs) {
+        const lines = this._specNode(n);
+        if (lines.length) this._tagLines(ctx, p.x, belowY + 2, lines, '#4a5563');
+      }
+    }
+
+    /** Concise input-spec lines for a node's boundary condition. */
+    _specNode(n) {
+      const u = UU();
+      if (n.type === 'supply') {
+        if (n.bcMode === 'flow') return [`Q ${u.fmt('flow', n.flow, 0)}`];
+        if (n.bcMode === 'pi') return [`PI ${n.pi} gpm/psi`, `res ${u.fmt('pressure', n.resPressure, 0)}`];
+        return [`P ${u.fmt('pressure', n.pressure, 0)}`];
+      }
+      if (n.type === 'injection') {
+        return [`II ${n.ii} gpm/psi`, `res ${u.fmt('pressure', n.resPressure, 0)}`];
+      }
+      // junction
+      return n.demand ? [`${n.demand > 0 ? '+' : ''}${u.fmt('flow', n.demand, 0)}`] : [];
     }
 
     _tag(ctx, x, y, text, color, center) {
@@ -522,6 +572,22 @@
       ctx.fillRect(x - w / 2, y - 8, w, 15);
       ctx.fillStyle = color;
       ctx.fillText(text, x, y);
+    }
+
+    /** Stack of small centered spec lines (used by the characteristics overlay). */
+    _tagLines(ctx, x, y, lines, color) {
+      ctx.font = '10.5px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const lh = 13;
+      let w = 0;
+      for (const t of lines) w = Math.max(w, ctx.measureText(t).width);
+      w += 8;
+      const h = lines.length * lh + 4;
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fillRect(x - w / 2, y - 8, w, h);
+      ctx.fillStyle = color;
+      lines.forEach((t, i) => ctx.fillText(t, x, y + i * lh));
     }
   }
 

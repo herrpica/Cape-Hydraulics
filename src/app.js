@@ -87,6 +87,12 @@
       editor.draw();
       setStatus('Display units: ' + (UIUnits.isSI() ? 'SI (barg, m³/h, m/s, m, mm)' : 'US (psig, gpm, ft/s, ft, in)'));
     };
+    $('btn-specs').onclick = () => {
+      editor.showSpecs = !editor.showSpecs;
+      $('btn-specs').classList.toggle('primary', editor.showSpecs);
+      editor.draw();
+      setStatus(editor.showSpecs ? 'Showing component characteristics on the schematic.' : 'Hid component characteristics.');
+    };
     $('btn-csv').onclick = exportCsv;
     $('btn-report').onclick = openReport;
     document.addEventListener('keydown', (e) => {
@@ -271,6 +277,7 @@
       card.appendChild(sizeRow);
 
       card.appendChild(dimField('Inside diameter', 'diameter', round(l.diameter, 3), (v) => (l.diameter = v)));
+      card.appendChild(dimField('Wall thickness', 'diameter', round(l.wall, 3), (v) => (l.wall = v)));
       card.appendChild(dimField('Length', 'length', l.length, (v) => (l.length = v)));
 
       const matSel = el('select', {
