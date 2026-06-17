@@ -381,6 +381,7 @@
         const u = UU();
         let label;
         if (r.closed) label = 'CLOSED';
+        else if (l.type === 'pump' && r.indeterminate) label = 'ΔP set · flow ?';
         else if (l.type === 'pump') label = `${u.fmt('flow', Math.abs(r.flow), 0)} · +${u.fmt('pressure', r.pumpDp || 0, 0)} · ${(r.bhp || 0).toFixed(0)} hp`;
         else label = `${u.fmt('flow', Math.abs(r.flow), 0)} · ${u.fmt('velocity', Math.abs(r.velocity), 1)}`;
         this._tag(ctx, mx, my - 16, label, r.closed ? '#9aa4b2' : '#33414f');

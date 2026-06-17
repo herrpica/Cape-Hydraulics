@@ -376,6 +376,9 @@ table.data tr:hover td {
 .status.bad {
   color: var(--bad);
 }
+.status.warn {
+  color: var(--warn);
+}
 .muted {
   color: var(--muted);
 }

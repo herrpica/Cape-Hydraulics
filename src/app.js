@@ -355,7 +355,10 @@
       const rc = el('div', { class: 'card result' });
       rc.appendChild(el('h3', {}, ['Result']));
       if (r.closed) rc.appendChild(kv('Status', 'CLOSED'));
-      else if (l.type === 'pump') {
+      else if (l.type === 'pump' && r.indeterminate) {
+        rc.appendChild(kv('Flow', 'indeterminate', 'bad'));
+        rc.appendChild(el('div', { class: 'hint' }, ['This pump sets a fixed ΔP between two fixed-pressure nodes, so its flow is not determined. Set one side by flow or injectivity (e.g. an injection well), or switch the pump to a performance curve.']));
+      } else if (l.type === 'pump') {
         rc.appendChild(kv('Flow', UIUnits.fmt('flow', Math.abs(r.flow), 1)));
         rc.appendChild(kv('ΔP rise', UIUnits.fmt('pressure', r.pumpDp, 1).replace('g ', ' ')));
         rc.appendChild(kv('Head rise', UIUnits.fmt('head', r.pumpHead, 1)));
@@ -455,8 +458,10 @@
     editor.setResults(r);
     renderResults();
     if (editor.selection) onSelect(editor.selection);
-    if (r.ok) setStatus(`Solved in ${r.iterations} iterations (${dt} ms).`, 'good');
-    else setStatus(r.messages.join('  '), 'bad');
+    if (r.ok) {
+      const warn = r.messages && r.messages.length ? '  ⚠ ' + r.messages.join('  ') : '';
+      setStatus(`Solved in ${r.iterations} iterations (${dt} ms).${warn}`, warn ? 'warn' : 'good');
+    } else setStatus(r.messages.join('  '), 'bad');
   }
 
   function renderResults() {

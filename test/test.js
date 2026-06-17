@@ -207,5 +207,32 @@ console.log('\nFixed-ΔP pump horsepower');
   ok('brake hp ~291.7', near(lr.bhp, 291.7, 4), lr.bhp.toFixed(1));
 })();
 
+console.log('\nFixed-ΔP pump overspecification guard');
+(function () {
+  // pump (fixed ΔP) between TWO fixed-pressure nodes -> flow indeterminate
+  const net = Model.newNetwork();
+  net.fluid = { name: 'water', density: 62.37, viscosity: 1.1, bulkModulus: 311000 };
+  const A = Model.newNode(0, 0, 'supply'); A.bcMode = 'head'; A.pressure = 100;
+  const B = Model.newNode(100, 0, 'supply'); B.bcMode = 'head'; B.pressure = 2000;
+  net.nodes = [A, B];
+  const p = Model.newLink(A.id, B.id, 'pump'); p.pumpMode = 'dp'; p.dp = 250; p.name = 'P1';
+  net.links = [p];
+  const r = Steady.solve(net);
+  ok('flags indeterminate flow', r.links[p.id].indeterminate === true, JSON.stringify(r.links[p.id].flow));
+  ok('warns about overspecification', r.messages.some((m) => /indeterminate/i.test(m)), r.messages.join(' | '));
+
+  // pump (fixed ΔP) into an injection well is NOT flagged (II makes it determinate)
+  const net2 = Model.newNetwork();
+  net2.fluid = { name: 'water', density: 62.37, viscosity: 1.1, bulkModulus: 311000 };
+  const S = Model.newNode(0, 0, 'supply'); S.bcMode = 'head'; S.pressure = 100;
+  const W = Model.newNode(100, 0, 'injection'); W.ii = 2.0; W.resPressure = 2000;
+  net2.nodes = [S, W];
+  const p2 = Model.newLink(S.id, W.id, 'pump'); p2.pumpMode = 'dp'; p2.dp = 2000;
+  net2.links = [p2];
+  const r2 = Steady.solve(net2);
+  ok('injection-well pump not flagged', !r2.links[p2.id].indeterminate, 'indeterminate=' + r2.links[p2.id].indeterminate);
+  ok('injection-well pump injects 200 gpm', near(r2.links[p2.id].flow, 200, 5), r2.links[p2.id].flow.toFixed(1));
+})();
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

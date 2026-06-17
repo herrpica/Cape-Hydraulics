@@ -88,6 +88,22 @@
       messages.push('All nodes are fixed-pressure boundaries.');
     }
 
+    // A constant-ΔP pump between two fixed-pressure nodes is overspecified: the
+    // boundary pressures already fix the head difference, so nothing determines
+    // the flow (and the declared ΔP may even contradict them). Flag it instead
+    // of reporting a meaningless flow. (A performance-curve pump is fine here —
+    // the curve intersects the fixed head difference at a unique flow.)
+    const indeterminate = new Set();
+    for (const l of links) {
+      if (l.type === 'pump' && pumpMode(l) === 'dp' && fixed.has(l.from) && fixed.has(l.to)) {
+        indeterminate.add(l.id);
+        messages.push(
+          `Pump “${l.name || l.id}” sets a fixed ΔP between two fixed-pressure nodes — its flow is indeterminate. ` +
+            'Set one side by flow or injectivity (e.g. an injection well), or give the pump a performance curve.'
+        );
+      }
+    }
+
     // Initial guess: average of fixed heads
     let Hfixed0 = [...fixed.values()].reduce((a, b) => a + b, 0) / fixed.size;
     let H = new Float64Array(free.length).fill(Hfixed0);
@@ -301,6 +317,9 @@
         hp,
         bhp,
       };
+      if (indeterminate.has(l.id)) {
+        Object.assign(linkOut[l.id], { flow: 0, velocity: 0, hp: 0, bhp: 0, indeterminate: true });
+      }
     }
 
     return {
