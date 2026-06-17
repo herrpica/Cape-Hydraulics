@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HydroStick — pipe network & surge analysis</title>
+    <link rel="stylesheet" href="assets/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo">⬡</span>
+        <div>
+          <strong>HydroStick</strong>
+          <small>pipe network &amp; surge modeler</small>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <div class="tgroup">
+          <button id="tool-select" title="Select / move (Esc)">▣ Select</button>
+        </div>
+        <div class="tgroup" data-label="Sources / sinks">
+          <button id="add-supply" title="Source: well or pump boundary">＋ Source</button>
+          <button id="add-injection" title="Sink: injection well">＋ Sink</button>
+          <button id="add-junction" title="Junction / tee">＋ Node</button>
+        </div>
+        <div class="tgroup" data-label="Sticks &amp; connectors">
+          <button id="add-pipe" title="Pipe segment — click two nodes">／ Pipe</button>
+          <button id="add-valve" title="Valve">▷◁ Valve</button>
+          <button id="add-check" title="Check valve">◉ Check</button>
+          <button id="add-pump" title="Pump">⊚ Pump</button>
+        </div>
+        <div class="tgroup">
+          <button id="btn-delete" title="Delete selection (Del)">🗑 Delete</button>
+          <button id="btn-fit" title="Fit to view (F)">⤢ Fit</button>
+        </div>
+        <div class="tgroup">
+          <button id="btn-run" class="primary" title="Solve steady state (R)">▶ Run</button>
+          <button id="btn-surge" class="accent" title="Surge / waterhammer">〜 Surge</button>
+        </div>
+        <div class="tgroup right">
+          <select id="example-select" title="Load example">
+            <option value="">Examples…</option>
+            <option value="bearskin">Bearskin pad (demo)</option>
+          </select>
+          <button id="btn-new" title="New empty model">New</button>
+          <button id="btn-save" title="Save .json">Save</button>
+          <button id="btn-load" title="Load .json">Load</button>
+          <input id="file-input" type="file" accept="application/json,.json" hidden />
+        </div>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <div class="canvas-wrap">
+        <canvas id="canvas"></canvas>
+        <div class="legend">
+          <span><i class="sw vel-ok"></i>&lt; 7 ft/s</span>
+          <span><i class="sw vel-warn"></i>7–12 ft/s</span>
+          <span><i class="sw vel-bad"></i>&gt; 12 ft/s</span>
+          <span class="tip">Scroll = zoom · drag empty space = pan · drag node = move · dbl-click valve = open/close</span>
+        </div>
+      </div>
+
+      <aside class="sidebar">
+        <div class="tabs">
+          <button id="tab-props" class="active">Properties</button>
+          <button id="tab-results">Results</button>
+        </div>
+
+        <div id="panel-props" class="panel">
+          <div id="fluid-card" class="card">
+            <h3>Fluid</h3>
+            <div id="fluid-fields"></div>
+          </div>
+        </div>
+
+        <div id="panel-results" class="panel" style="display: none"></div>
+      </aside>
+    </main>
+
+    <footer class="statusbar">
+      <span id="status" class="status">Ready.</span>
+      <span class="muted">HydroStick — Darcy-Weisbach steady state · Method-of-Characteristics surge</span>
+    </footer>
+
+    <!-- Surge modal -->
+    <div id="surge-modal" class="modal" style="display: none">
+      <div class="modal-card">
+        <div class="modal-head">
+          <h2>〜 Surge / waterhammer — closing <span id="surge-target">valve</span></h2>
+          <button id="surge-close" class="iconbtn">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="surge-form">
+            <h3>Pipeline</h3>
+            <label class="field"><span>Pipe length (ft)</span><input id="sg-length" type="number" step="any" /></label>
+            <label class="field"><span>Inside dia (in)</span><input id="sg-dia" type="number" step="any" /></label>
+            <label class="field"><span>Wall thickness (in)</span><input id="sg-wall" type="number" step="any" /></label>
+            <label class="field"><span>Roughness (ft)</span><input id="sg-rough" type="number" step="any" /></label>
+            <h3>Operating point</h3>
+            <label class="field"><span>Initial flow (gpm)</span><input id="sg-q0" type="number" step="any" /></label>
+            <label class="field"><span>Upstream pressure (psig)</span><input id="sg-pup" type="number" step="any" /></label>
+            <label class="field"><span>Valve elevation (ft)</span><input id="sg-elev" type="number" step="any" /></label>
+            <h3>Closure</h3>
+            <label class="field"><span>Closure time (s)</span><input id="sg-close" type="number" step="any" /></label>
+            <label class="field"
+              ><span>Closure law</span>
+              <select id="sg-profile">
+                <option value="linear">Linear</option>
+                <option value="cosine">Cosine (soft)</option>
+                <option value="concave">Fast-initial</option>
+                <option value="convex">Slow-initial</option>
+              </select>
+            </label>
+            <label class="field"><span>Reaches (resolution)</span><input id="sg-reaches" type="number" step="1" /></label>
+            <h3>Rating check</h3>
+            <label class="field"><span>MAWP (psig)</span><input id="sg-mawp" type="number" step="any" /></label>
+            <button id="surge-run" class="primary wide">▶ Simulate surge</button>
+          </div>
+          <div class="surge-output">
+            <canvas id="surge-chart"></canvas>
+            <div id="surge-summary" class="surge-summary"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- engine (plain scripts; no build step, runs from file://) -->
+    <script src="src/units.js"></script>
+    <script src="src/fluids.js"></script>
+    <script src="src/fittings.js"></script>
+    <script src="src/model.js"></script>
+    <script src="src/steady.js"></script>
+    <script src="src/surge.js"></script>
+    <script src="src/charts.js"></script>
+    <script src="src/examples.js"></script>
+    <script src="src/editor.js"></script>
+    <script src="src/app.js"></script>
+  </body>
+</html>
