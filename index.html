@@ -36,6 +36,9 @@
           <button id="btn-fit" title="Fit to view (F)">⤢ Fit</button>
         </div>
         <div class="tgroup">
+          <button id="btn-describe" class="accent" title="Describe a system in plain English and let the assistant build it">✨ Describe</button>
+        </div>
+        <div class="tgroup">
           <button id="btn-run" class="primary" title="Solve steady state (R)">▶ Run</button>
           <button id="btn-surge" class="accent" title="Surge / waterhammer">〜 Surge</button>
         </div>
@@ -134,12 +137,63 @@
       </div>
     </div>
 
+    <!-- Describe (LLM assistant) modal -->
+    <div id="describe-modal" class="modal" style="display: none">
+      <div class="modal-card">
+        <div class="modal-head">
+          <h2>✨ Describe your system</h2>
+          <button id="describe-close" class="iconbtn">✕</button>
+        </div>
+        <div class="modal-body describe-body">
+          <p class="describe-intro">
+            Describe the hydraulic system in plain English — wells, headers, pipe sizes, pumps, valves —
+            and the assistant will build the model for you. You can edit everything afterward.
+          </p>
+          <textarea
+            id="describe-input"
+            class="describe-input"
+            rows="7"
+            placeholder="e.g. Two production wells flowing 1500 gpm each feed a 12-inch header 800 ft to the ORC inlet at 375 psig. Spent brine plus 400 gpm makeup is boosted by an injection pump into a 10-inch discharge header serving three injection wells (reservoir 2000 psig). Put a control valve on the largest injector."
+          ></textarea>
+          <div class="describe-examples">
+            <span class="muted">Try:</span>
+            <button class="chip" data-fill="A single production well flowing 1200 gpm through 1000 ft of 8-inch pipe to a junction, then 500 ft of 10-inch pipe to an injection well with reservoir pressure 2000 psig.">Simple inject loop</button>
+            <button class="chip" data-fill="Three production wells (900, 1100, 1300 gpm) tie into an 18-inch header that runs 2000 ft to the ORC inlet held at 350 psig.">Production header</button>
+            <button class="chip" data-fill="A pump takes suction from a 200 psig reservoir and discharges through a check valve and 600 ft of 12-inch pipe to a manifold feeding two injection wells.">Pump + check</button>
+          </div>
+
+          <div class="describe-settings">
+            <label class="field">
+              <span>Anthropic API key</span>
+              <input id="describe-key" type="password" placeholder="sk-ant-…" autocomplete="off" />
+            </label>
+            <label class="field">
+              <span>Model</span>
+              <select id="describe-model">
+                <option value="claude-opus-4-8">Claude Opus 4.8 (most capable)</option>
+                <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (faster)</option>
+              </select>
+            </label>
+            <p class="describe-note muted">
+              Your key is stored only in this browser and sent directly to api.anthropic.com.
+            </p>
+          </div>
+
+          <div class="describe-actions">
+            <button id="describe-build" class="primary wide">✨ Build it</button>
+            <span id="describe-status" class="describe-status muted"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- engine (plain scripts; no build step, runs from file://) -->
     <script src="src/units.js"></script>
     <script src="src/uiunits.js"></script>
     <script src="src/fluids.js"></script>
     <script src="src/fittings.js"></script>
     <script src="src/model.js"></script>
+    <script src="src/assistant.js"></script>
     <script src="src/steady.js"></script>
     <script src="src/surge.js"></script>
     <script src="src/charts.js"></script>

@@ -39,6 +39,7 @@
     HE.__editor = editor; // debug handle (console access to the live editor)
     bindToolbar();
     bindSurgeModal();
+    bindDescribeModal();
     loadExample('bearskin');
     renderFluid();
     setStatus('Loaded example: Bearskin pad. Click “Run” to solve.');
@@ -58,6 +59,7 @@
     $('btn-fit').onclick = () => editor.fit();
     $('btn-run').onclick = run;
     $('btn-surge').onclick = openSurge;
+    $('btn-describe').onclick = openDescribe;
     $('btn-save').onclick = save;
     $('btn-load').onclick = () => $('file-input').click();
     $('file-input').onchange = load;
@@ -511,6 +513,77 @@
     $('surge-modal').dataset.linkId = valve.id;
     $('surge-modal').style.display = 'flex';
     runSurge();
+  }
+
+  // ---------- describe (LLM assistant) ----------
+  function bindDescribeModal() {
+    const A = HE.Assistant;
+    $('describe-close').onclick = () => ($('describe-modal').style.display = 'none');
+    $('describe-modal').addEventListener('click', (e) => {
+      if (e.target.id === 'describe-modal') $('describe-modal').style.display = 'none';
+    });
+    $('describe-build').onclick = buildFromDescription;
+    // Persist key/model as the user edits them.
+    $('describe-key').onchange = (e) => A.setKey(e.target.value.trim());
+    $('describe-model').onchange = (e) => A.setModel(e.target.value);
+    // Example chips fill the textarea.
+    document.querySelectorAll('#describe-modal .chip').forEach((chip) => {
+      chip.onclick = () => {
+        $('describe-input').value = chip.dataset.fill;
+        $('describe-input').focus();
+      };
+    });
+    // Ctrl/Cmd+Enter to build.
+    $('describe-input').addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') buildFromDescription();
+    });
+  }
+
+  function openDescribe() {
+    const A = HE.Assistant;
+    $('describe-key').value = A.getKey();
+    $('describe-model').value = A.getModel();
+    setDescribeStatus('');
+    $('describe-modal').style.display = 'flex';
+    $('describe-input').focus();
+  }
+
+  function setDescribeStatus(msg, kind) {
+    const el = $('describe-status');
+    el.textContent = msg || '';
+    el.className = 'describe-status ' + (kind === 'bad' ? 'bad' : kind === 'ok' ? 'ok' : 'muted');
+  }
+
+  async function buildFromDescription() {
+    const A = HE.Assistant;
+    const desc = $('describe-input').value;
+    const key = $('describe-key').value.trim();
+    const model = $('describe-model').value;
+    if (!key) return setDescribeStatus('Enter your Anthropic API key first.', 'bad');
+    if (!desc.trim()) return setDescribeStatus('Describe the system first.', 'bad');
+    A.setKey(key);
+    A.setModel(model);
+
+    const btn = $('describe-build');
+    btn.disabled = true;
+    setDescribeStatus('Building… this can take a few seconds.');
+    try {
+      const built = await A.generate(desc, { key, model });
+      if (!built.nodes || !built.nodes.length) throw new Error('The model returned an empty network.');
+      net = built;
+      editor.setNetwork(net);
+      lastResults = null;
+      renderFluid();
+      onSelect(null);
+      renderResults();
+      setTimeout(() => editor.fit(), 0);
+      $('describe-modal').style.display = 'none';
+      setStatus(`Built “${net.meta.name || 'system'}” from your description (${net.nodes.length} nodes, ${net.links.length} links). Review and press “Run”.`);
+    } catch (err) {
+      setDescribeStatus(err.message || String(err), 'bad');
+    } finally {
+      btn.disabled = false;
+    }
   }
 
   // Smallest ANSI B16.5 flange-class working pressure (psig, CS ~ moderate temp)
