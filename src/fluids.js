@@ -19,8 +19,49 @@
 
   // Bulk modulus values above are in psi (water ~311,000 psi).
 
+  // Liquid-water properties vs temperature (1 atm / lightly compressed):
+  //   [ tempF, density lb/ft^3, viscosity cP, bulk modulus psi ]
+  // Interpolated linearly; clamped to the table ends. Representative engineering
+  // values — good enough to pick properties from a temperature without a steam
+  // table, not a substitute for IAPWS.
+  const WATER = [
+    [32, 62.42, 1.79, 293000],
+    [50, 62.41, 1.31, 305000],
+    [60, 62.37, 1.12, 311000],
+    [70, 62.30, 0.98, 316000],
+    [80, 62.22, 0.86, 319000],
+    [100, 61.99, 0.68, 322000],
+    [120, 61.71, 0.56, 323000],
+    [140, 61.38, 0.47, 323000],
+    [160, 61.00, 0.40, 321000],
+    [180, 60.58, 0.35, 318000],
+    [200, 60.11, 0.30, 313000],
+    [220, 59.6, 0.27, 306000],
+    [250, 58.81, 0.23, 295000],
+    [300, 57.31, 0.184, 270000],
+    [350, 55.59, 0.153, 240000],
+    [400, 53.65, 0.134, 205000],
+  ];
+
   const Fluids = {
     PRESETS,
+
+    /** Water properties interpolated for a temperature (deg F). */
+    water(tempF) {
+      const t = Math.max(WATER[0][0], Math.min(WATER[WATER.length - 1][0], tempF));
+      let i = 0;
+      while (i < WATER.length - 1 && WATER[i + 1][0] < t) i++;
+      const [t0, d0, v0, b0] = WATER[i];
+      const [t1, d1, v1, b1] = WATER[Math.min(i + 1, WATER.length - 1)];
+      const f = t1 > t0 ? (t - t0) / (t1 - t0) : 0;
+      const lerp = (a, b) => a + (b - a) * f;
+      return {
+        name: `Water (${Math.round(tempF)} F)`,
+        density: Math.round(lerp(d0, d1) * 100) / 100,
+        viscosity: Math.round(lerp(v0, v1) * 1000) / 1000,
+        bulkModulus: Math.round(lerp(b0, b1)),
+      };
+    },
 
     /** Specific gravity relative to 62.4 lb/ft^3. */
     specificGravity: (rho) => rho / 62.37,

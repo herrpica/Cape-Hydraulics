@@ -254,6 +254,14 @@ button.accent:hover {
 .field.tiny {
   margin-bottom: 0;
 }
+.field .ro-val {
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f7f8fb;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
 .row2 {
   display: flex;
   gap: 8px;

@@ -381,7 +381,7 @@
         const u = UU();
         let label;
         if (r.closed) label = 'CLOSED';
-        else if (l.type === 'pump') label = `${u.fmt('flow', Math.abs(r.flow), 0)} · +${u.fmt('head', r.pumpHead || 0, 0)}`;
+        else if (l.type === 'pump') label = `${u.fmt('flow', Math.abs(r.flow), 0)} · +${u.fmt('pressure', r.pumpDp || 0, 0)} · ${(r.bhp || 0).toFixed(0)} hp`;
         else label = `${u.fmt('flow', Math.abs(r.flow), 0)} · ${u.fmt('velocity', Math.abs(r.velocity), 1)}`;
         this._tag(ctx, mx, my - 16, label, r.closed ? '#9aa4b2' : '#33414f');
       } else if (l.name) {
@@ -402,8 +402,11 @@
         return [`Cv ${l.cv}`, l.closed ? 'CLOSED' : `${Math.round((l.openFraction ?? 1) * 100)}% open`];
       }
       if (l.type === 'pump') {
-        const c = (l.curve || [])[0];
-        return c ? ['pump', `shutoff ${u.fmt('head', c.h, 0)}`] : ['pump'];
+        if (l.pumpMode === 'curve') {
+          const c = (l.curve || [])[0];
+          return c ? ['pump', `shutoff ${u.fmt('head', c.h, 0)}`] : ['pump'];
+        }
+        return ['pump', `ΔP ${u.fmt('pressure', l.dp || 0, 0)}`];
       }
       // pipe / check
       const size = `${l.nominal}" Sch ${l.sched}`;

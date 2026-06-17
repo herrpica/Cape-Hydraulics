@@ -129,28 +129,61 @@
   }
 
   // ---------- fluid ----------
+  function applyWaterTemp(t) {
+    const w = Fluids.water(t);
+    net.fluid.kind = 'water';
+    net.fluid.tempF = t;
+    net.fluid.name = w.name;
+    net.fluid.density = w.density;
+    net.fluid.viscosity = w.viscosity;
+    net.fluid.bulkModulus = w.bulkModulus;
+  }
+
   function renderFluid() {
     const host = $('fluid-fields');
     host.innerHTML = '';
-    const presetSel = el('select', {
+
+    // Fluid type: "water by temperature", a named preset, or custom values.
+    const typeSel = el('select', {
       onchange: (e) => {
-        const p = Fluids.PRESETS[e.target.value];
-        if (p) {
+        const v = e.target.value;
+        if (v === 'water') {
+          applyWaterTemp(net.fluid.tempF || 120);
+        } else if (Fluids.PRESETS[v]) {
+          const p = Fluids.PRESETS[v];
           net.fluid = { name: p.name, density: p.density, viscosity: p.viscosity, bulkModulus: p.bulkModulus };
-          renderFluid();
-          markDirty();
+        } else {
+          // custom — keep current numbers, drop the water binding
+          delete net.fluid.kind;
+          delete net.fluid.tempF;
         }
+        renderFluid();
+        markDirty();
       },
     });
-    presetSel.appendChild(el('option', { value: '' }, ['— preset —']));
-    for (const k in Fluids.PRESETS) presetSel.appendChild(el('option', { value: k }, [Fluids.PRESETS[k].name]));
-    // Re-select the active preset if the current fluid still matches one.
+    typeSel.appendChild(el('option', { value: 'water' }, ['Water (by temperature)']));
+    for (const k in Fluids.PRESETS) typeSel.appendChild(el('option', { value: k }, [Fluids.PRESETS[k].name]));
+    typeSel.appendChild(el('option', { value: 'custom' }, ['Custom']));
     const activeKey = Object.keys(Fluids.PRESETS).find((k) => Fluids.PRESETS[k].name === net.fluid.name);
-    if (activeKey) presetSel.value = activeKey;
-    host.appendChild(fieldRow('Fluid preset', presetSel));
-    host.appendChild(dimField('Density', 'density', net.fluid.density, (v) => (net.fluid.density = v)));
-    host.appendChild(numField('Viscosity (cP)', net.fluid.viscosity, (v) => (net.fluid.viscosity = v)));
-    host.appendChild(numField('Bulk modulus (psi)', net.fluid.bulkModulus, (v) => (net.fluid.bulkModulus = v)));
+    typeSel.value = net.fluid.kind === 'water' ? 'water' : activeKey || 'custom';
+    host.appendChild(fieldRow('Fluid type', typeSel));
+
+    if (net.fluid.kind === 'water') {
+      // Temperature drives the properties; show them computed (read-only).
+      const tInp = el('input', {
+        type: 'number', step: 'any', value: net.fluid.tempF || 120,
+        onchange: (e) => { applyWaterTemp(parseFloat(e.target.value)); renderFluid(); markDirty(); editor.draw(); },
+      });
+      host.appendChild(fieldRow('Temperature (°F)', tInp));
+      host.appendChild(roField('Density', UIUnits.fmt('density', net.fluid.density, 2)));
+      host.appendChild(roField('Viscosity', net.fluid.viscosity.toFixed(3) + ' cP'));
+      host.appendChild(roField('Bulk modulus', Math.round(net.fluid.bulkModulus) + ' psi'));
+      host.appendChild(el('div', { class: 'hint' }, ['Liquid-water properties interpolated for this temperature (32–400 °F).']));
+    } else {
+      host.appendChild(dimField('Density', 'density', net.fluid.density, (v) => (net.fluid.density = v)));
+      host.appendChild(numField('Viscosity (cP)', net.fluid.viscosity, (v) => (net.fluid.viscosity = v)));
+      host.appendChild(numField('Bulk modulus (psi)', net.fluid.bulkModulus, (v) => (net.fluid.bulkModulus = v)));
+    }
   }
 
   // ---------- selection / property editor ----------
@@ -301,9 +334,20 @@
       card.appendChild(el('div', { class: 'hint' }, ['Double-click a valve on the canvas to toggle open/closed. Use “Surge” to study closing this valve.']));
       host.appendChild(card);
     } else if (l.type === 'pump') {
-      card.appendChild(el('div', { class: 'hint' }, [`Performance curve — head (${UIUnits.unit('head')}) vs flow (${UIUnits.unit('flow')}). Add points; a quadratic is fit through them.`]));
+      const modeSel = el('select', {
+        onchange: (e) => { l.pumpMode = e.target.value; onSelect({ kind: 'link', id: l.id }); markDirty(); editor.draw(); },
+      });
+      [['dp', 'Fixed pressure rise (ΔP)'], ['curve', 'Performance curve']].forEach(([v, t]) =>
+        modeSel.appendChild(el('option', { value: v, ...((l.pumpMode || 'dp') === v ? { selected: 'selected' } : {}) }, [t]))
+      );
+      card.appendChild(fieldRow('Pump model', modeSel));
+      if ((l.pumpMode || 'dp') === 'dp') {
+        card.appendChild(dimField('Pressure rise (ΔP)', 'pressure', l.dp, (v) => (l.dp = v)));
+        card.appendChild(el('div', { class: 'hint' }, ['Constant head rise; flow is set by the rest of the system. Run to see horsepower.']));
+      }
+      card.appendChild(sliderField('Efficiency', l.eff ?? 0.7, (v) => (l.eff = v)));
       host.appendChild(card);
-      host.appendChild(buildPumpCurve(l));
+      if ((l.pumpMode || 'dp') === 'curve') host.appendChild(buildPumpCurve(l));
     }
 
     if (lastResults && lastResults.links[l.id]) {
@@ -311,13 +355,18 @@
       const rc = el('div', { class: 'card result' });
       rc.appendChild(el('h3', {}, ['Result']));
       if (r.closed) rc.appendChild(kv('Status', 'CLOSED'));
-      else {
+      else if (l.type === 'pump') {
+        rc.appendChild(kv('Flow', UIUnits.fmt('flow', Math.abs(r.flow), 1)));
+        rc.appendChild(kv('ΔP rise', UIUnits.fmt('pressure', r.pumpDp, 1).replace('g ', ' ')));
+        rc.appendChild(kv('Head rise', UIUnits.fmt('head', r.pumpHead, 1)));
+        rc.appendChild(kv('Hydraulic power', `${(r.hp || 0).toFixed(1)} hp`));
+        rc.appendChild(kv('Brake power', `${(r.bhp || 0).toFixed(1)} hp`, 'warn'));
+        rc.appendChild(el('div', { class: 'hint' }, [`Brake power at ${Math.round((l.eff ?? 0.7) * 100)}% efficiency. Hydraulic = Q·ΔP/1714.`]));
+      } else {
         rc.appendChild(kv('Flow', UIUnits.fmt('flow', r.flow, 1)));
-        if (l.type !== 'pump')
-          rc.appendChild(kv('Velocity', UIUnits.fmt('velocity', Math.abs(r.velocity), 2), Math.abs(r.velocity) > 12 ? 'bad' : Math.abs(r.velocity) > 7 ? 'warn' : 'good'));
+        rc.appendChild(kv('Velocity', UIUnits.fmt('velocity', Math.abs(r.velocity), 2), Math.abs(r.velocity) > 12 ? 'bad' : Math.abs(r.velocity) > 7 ? 'warn' : 'good'));
         rc.appendChild(kv('ΔP', UIUnits.fmt('pressure', r.dP, 2).replace('g ', ' ')));
-        if (l.type !== 'pump') rc.appendChild(kv('ΔP gradient', UIUnits.fmt('gradient', r.dP100, 2)));
-        if (l.type === 'pump') rc.appendChild(kv('Pump head', UIUnits.fmt('head', r.pumpHead, 1)));
+        rc.appendChild(kv('ΔP gradient', UIUnits.fmt('gradient', r.dP100, 2)));
         rc.appendChild(kv('Reynolds', `${r.Re.toExponential(2)}`));
         rc.appendChild(kv('Friction f', `${r.f.toFixed(4)}`));
       }
@@ -967,6 +1016,10 @@
   // ---------- small DOM helpers ----------
   function fieldRow(label, control) {
     return el('label', { class: 'field' }, [el('span', {}, [label]), control]);
+  }
+  // Read-only "value" row (computed property the user shouldn't edit directly).
+  function roField(label, text) {
+    return el('div', { class: 'field ro' }, [el('span', {}, [label]), el('div', { class: 'ro-val' }, [text])]);
   }
   function labeled(label, control) {
     return el('label', { class: 'field tiny' }, [el('span', {}, [label]), control]);

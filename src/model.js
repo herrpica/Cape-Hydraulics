@@ -69,6 +69,9 @@
       openFraction: 1, // 0..1
       closed: false,
       // pump
+      pumpMode: 'dp', // 'dp' (fixed pressure rise) | 'curve' (performance curve)
+      dp: 200, // psi — fixed head-rise for pumpMode 'dp'
+      eff: 0.7, // pump efficiency (0..1), for brake-horsepower estimate
       curve: [
         { q: 0, h: 600 },
         { q: 2000, h: 520 },
@@ -89,8 +92,22 @@
     const fresh = newNetwork();
     net.meta = Object.assign(fresh.meta, net.meta || {});
     net.fluid = Object.assign(fresh.fluid, net.fluid || {});
+    // Water-by-temperature: keep properties consistent with the stored temp.
+    const Fluids = global.HE && global.HE.Fluids;
+    if (net.fluid.kind === 'water' && Fluids) {
+      Object.assign(net.fluid, Fluids.water(net.fluid.tempF ?? 60));
+      net.fluid.kind = 'water';
+    }
     net.nodes = (net.nodes || []).map((n) => Object.assign(newNode(n.x || 0, n.y || 0, n.type), n));
-    net.links = (net.links || []).map((l) => Object.assign(newLink(l.from, l.to, l.type), l));
+    net.links = (net.links || []).map((l) => {
+      const merged = Object.assign(newLink(l.from, l.to, l.type), l);
+      // Pumps loaded with a curve but no explicit mode keep curve behavior;
+      // otherwise default to the simpler fixed-dP mode.
+      if (merged.type === 'pump' && l.pumpMode == null) {
+        merged.pumpMode = l.curve && l.curve.length ? 'curve' : 'dp';
+      }
+      return merged;
+    });
     return net;
   }
 

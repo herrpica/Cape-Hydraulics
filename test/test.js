@@ -161,5 +161,51 @@ console.log('\nSurge: slow closure reduces peak (relief sizing intuition)');
   ok('slow closure peak < fast closure peak', slow.maxPressure < fast.maxPressure, `${slow.maxPressure.toFixed(0)} < ${fast.maxPressure.toFixed(0)}`);
 })();
 
+console.log('\nWater properties by temperature');
+(function () {
+  const w60 = Fluids.water(60);
+  ok('density at 60F ~62.37', near(w60.density, 62.37, 0.05), w60.density);
+  ok('viscosity at 60F ~1.12 cP', near(w60.viscosity, 1.12, 0.05), w60.viscosity);
+  const w200 = Fluids.water(200);
+  ok('density at 200F ~60.1', near(w200.density, 60.11, 0.2), w200.density);
+  ok('viscosity drops with temp', w200.viscosity < w60.viscosity, `${w200.viscosity} < ${w60.viscosity}`);
+  // interpolation between table points
+  const w130 = Fluids.water(130);
+  ok('130F interpolates between 120 and 140', w130.density < Fluids.water(120).density && w130.density > Fluids.water(140).density, w130.density);
+  // clamping outside the table
+  ok('clamps below 32F', Fluids.water(-20).density === Fluids.water(32).density, Fluids.water(-20).density);
+  ok('clamps above 400F', Fluids.water(900).density === Fluids.water(400).density, Fluids.water(900).density);
+  // normalize() fills properties from kind:'water' + tempF
+  const net = Model.normalize({ fluid: { kind: 'water', tempF: 200 }, nodes: [], links: [] });
+  ok('normalize fills water props from tempF', near(net.fluid.density, 60.11, 0.2), net.fluid.density);
+})();
+
+console.log('\nFixed-ΔP pump horsepower');
+(function () {
+  const net = Model.newNetwork();
+  net.fluid = { name: 'water', density: 62.37, viscosity: 1.1, bulkModulus: 311000 };
+  const A = Model.newNode(0, 0, 'supply');
+  A.bcMode = 'head';
+  A.pressure = 100;
+  const B = Model.newNode(100, 0, 'supply');
+  B.bcMode = 'flow';
+  B.flow = -1500; // 1500 gpm drawn through the pump
+  net.nodes = [A, B];
+  const p = Model.newLink(A.id, B.id, 'pump');
+  p.pumpMode = 'dp';
+  p.dp = 250; // psi rise
+  p.eff = 0.75;
+  net.links = [p];
+  const r = Steady.solve(net);
+  ok('converged', r.ok, r.messages.join('; '));
+  const lr = r.links[p.id];
+  ok('flow ~1500 gpm', near(Math.abs(lr.flow), 1500, 10), lr.flow.toFixed(1));
+  ok('pump ΔP rise ~250 psi', near(lr.pumpDp, 250, 2), lr.pumpDp.toFixed(1));
+  // WHP = Q*dP/1714 = 1500*250/1714 = 218.8 hp
+  ok('hydraulic hp ~218.8', near(lr.hp, 218.8, 3), lr.hp.toFixed(1));
+  // BHP = WHP / 0.75 = 291.7 hp
+  ok('brake hp ~291.7', near(lr.bhp, 291.7, 4), lr.bhp.toFixed(1));
+})();
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

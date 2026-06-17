@@ -28,7 +28,7 @@
   }
   function pump(from, to, name) {
     return {
-      type: 'pump', from, to, name,
+      type: 'pump', from, to, name, pumpMode: 'curve', eff: 0.75,
       curve: [{ q: 0, h: 5600 }, { q: 4000, h: 5300 }, { q: 8000, h: 4700 }, { q: 12000, h: 3700 }],
     };
   }

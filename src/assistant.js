@@ -27,10 +27,15 @@
 
 {
   "meta":  { "name": string },
-  "fluid": { "name": string, "density": number (lb/ft^3), "viscosity": number (cP), "bulkModulus": number (psi) },
+  "fluid": Fluid,
   "nodes": [ Node, ... ],
   "links": [ Link, ... ]
 }
+
+Fluid — either explicit properties:
+    { "name": string, "density": number (lb/ft^3), "viscosity": number (cP), "bulkModulus": number (psi) }
+  or water defined by temperature (the app fills the properties):
+    { "kind": "water", "tempF": number (deg F, 32-400) }
 
 Node — every node needs a unique "id" (short string) and an (x, y) canvas
 position in pixels. Lay the system out left-to-right: sources on the left,
@@ -52,7 +57,9 @@ Link — connects two nodes by id: "from" and "to". "type" is one of:
             optional "fittings": [ { "type": FittingType, "qty": int } ].
   "valve" — control valve. Set "cv" (flow coeff, gpm @ 1 psi) and "openFraction" (0..1).
   "check" — check valve (one-way). Pipe-like geometry.
-  "pump"  — set "curve": [ { "q": gpm, "h": ft }, ... ] (3+ points, descending head).
+  "pump"  — prefer fixed pressure rise: "pumpMode": "dp", "dp": number (psi),
+            optional "eff" (0..1 efficiency). Only use a performance curve when
+            the user gives one: "pumpMode": "curve", "curve": [ { "q": gpm, "h": ft }, ... ].
 
   Optional on any link: "name" (label).
 

@@ -33,6 +33,23 @@
     return { R: Math.max(Rcoef, 1e-9), f, Re, v, A, dFt };
   }
 
+  /** Effective pump mode: explicit, else inferred from whether a curve exists. */
+  function pumpMode(l) {
+    if (l.pumpMode === 'curve' || l.pumpMode === 'dp') return l.pumpMode;
+    return l.curve && l.curve.length ? 'curve' : 'dp';
+  }
+
+  /**
+   * Pump head model as quadratic coefficients Hp(Qgpm) = c0 + c1 Q + c2 Q^2 (ft).
+   * Fixed-dP pumps are a flat curve: c0 = head-equivalent of dp, c1=c2=0.
+   */
+  function pumpCoeffs(l, fluid) {
+    if (pumpMode(l) === 'dp') {
+      return { c0: U.psiToFt(Math.max(l.dp || 0, 0), fluid.density), c1: 0, c2: 0 };
+    }
+    return Model.fitPumpCurve(l.curve);
+  }
+
   function valveResistance(link, fluid) {
     // dP[psi] = SG*(Qgpm/Cv)^2  ->  dH = psiToFt(dP)
     const SG = Fluids.specificGravity(fluid.density);
@@ -127,7 +144,7 @@
         let st = {};
 
         if (l.type === 'pump') {
-          const fit = Model.fitPumpCurve(l.curve);
+          const fit = pumpCoeffs(l, fluid);
           // Hp(Qg) = c0 + c1 Qg + c2 Qg^2 (Qg in gpm). dH = -Hp.
           const Qg = U.cfsToGpm(ql);
           const Hp = fit.c0 + fit.c1 * Qg + fit.c2 * Qg * Qg;
@@ -207,7 +224,7 @@
         let q;
         if (st.kind === 'pump') {
           q = qLag.get(l.id); // keep; pumps relax slowly
-          const fit = Model.fitPumpCurve(l.curve);
+          const fit = pumpCoeffs(l, fluid);
           const Qg = U.cfsToGpm(q);
           let slope = fit.c1 + 2 * fit.c2 * Qg;
           if (Math.abs(slope) < 1e-5) slope = -1e-5;
@@ -258,10 +275,18 @@
       const f = Fluids.frictionFactor(Math.max(Re, 1), l.roughness, dFt);
       let headloss = dH;
       let pumpHead = 0;
+      let hp = 0; // hydraulic (water) horsepower
+      let bhp = 0; // brake horsepower (hydraulic / efficiency)
+      let pumpDp = 0; // pressure rise across the pump, psi
       if (l.type === 'pump') {
-        const fit = Model.fitPumpCurve(l.curve);
+        const fit = pumpCoeffs(l, fluid);
         const Qg = U.cfsToGpm(qcfs);
         pumpHead = fit.c0 + fit.c1 * Qg + fit.c2 * Qg * Qg;
+        pumpDp = U.ftToPsi(pumpHead, fluid.density);
+        // WHP = Q[gpm] * dP[psi] / 1714 ; BHP = WHP / efficiency
+        hp = (Math.abs(U.cfsToGpm(qcfs)) * pumpDp) / 1714;
+        const eff = Math.min(Math.max(l.eff || 0, 0.01), 1);
+        bhp = hp / eff;
       }
       linkOut[l.id] = {
         flow: U.cfsToGpm(qcfs),
@@ -272,6 +297,9 @@
         dP: U.ftToPsi(headloss, fluid.density),
         dP100: l.length > 0 ? (U.ftToPsi(headloss, fluid.density) / l.length) * 100 : 0,
         pumpHead,
+        pumpDp,
+        hp,
+        bhp,
       };
     }
 
