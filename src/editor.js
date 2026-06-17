@@ -32,6 +32,7 @@
       this.mouse = { x: 0, y: 0, world: { x: 0, y: 0 } };
       this.onSelect = () => {};
       this.onChange = () => {};
+      this.onHint = () => {};
       this._bind();
       this.resize();
     }
@@ -133,6 +134,7 @@
           if (n) {
             if (!this.pipeStart) {
               this.pipeStart = n.id;
+              this.onHint('Now click a second node to complete the ' + this.pendingLinkType + '.');
             } else if (this.pipeStart !== n.id) {
               const l = Model.newLink(this.pipeStart, n.id, this.pendingLinkType);
               this.net.links.push(l);
@@ -140,6 +142,15 @@
               this.pipeStart = null;
               this.select('link', l.id);
               this.setMode('select');
+            }
+          } else {
+            // Clicked empty space — give a helpful nudge.
+            if (this.net.nodes.length === 0) {
+              this.onHint('Add nodes first (Source, Sink, or Node), then connect them with a ' + this.pendingLinkType + '.');
+            } else {
+              this.onHint(!this.pipeStart
+                ? 'Click on an existing node to start the ' + this.pendingLinkType + '.'
+                : 'Click on another node to complete the ' + this.pendingLinkType + '.');
             }
           }
           this.draw();

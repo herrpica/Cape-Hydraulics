@@ -31,6 +31,7 @@
     fluidCard = $('fluid-card');
     editor = new Editor(canvas, net);
     editor.onSelect = onSelect;
+    editor.onHint = setStatus;
     editor.onChange = () => {
       markDirty();
     };
@@ -49,10 +50,10 @@
     $('add-supply').onclick = () => editor.setMode('node', 'supply');
     $('add-injection').onclick = () => editor.setMode('node', 'injection');
     $('add-junction').onclick = () => editor.setMode('node', 'junction');
-    $('add-pipe').onclick = () => editor.setMode('pipe', 'pipe');
-    $('add-valve').onclick = () => editor.setMode('pipe', 'valve');
-    $('add-check').onclick = () => editor.setMode('pipe', 'check');
-    $('add-pump').onclick = () => editor.setMode('pipe', 'pump');
+    $('add-pipe').onclick = () => { editor.setMode('pipe', 'pipe'); setStatus('Pipe: click a node to start, then click another node to connect.'); };
+    $('add-valve').onclick = () => { editor.setMode('pipe', 'valve'); setStatus('Valve: click a node to start, then click another node to connect.'); };
+    $('add-check').onclick = () => { editor.setMode('pipe', 'check'); setStatus('Check valve: click a node to start, then click another node to connect.'); };
+    $('add-pump').onclick = () => { editor.setMode('pipe', 'pump'); setStatus('Pump: click a node to start, then click another node to connect.'); };
     $('btn-delete').onclick = () => editor.deleteSelection();
     $('btn-fit').onclick = () => editor.fit();
     $('btn-run').onclick = run;
@@ -135,6 +136,9 @@
     });
     presetSel.appendChild(el('option', { value: '' }, ['— preset —']));
     for (const k in Fluids.PRESETS) presetSel.appendChild(el('option', { value: k }, [Fluids.PRESETS[k].name]));
+    // Re-select the active preset if the current fluid still matches one.
+    const activeKey = Object.keys(Fluids.PRESETS).find((k) => Fluids.PRESETS[k].name === net.fluid.name);
+    if (activeKey) presetSel.value = activeKey;
     host.appendChild(fieldRow('Fluid preset', presetSel));
     host.appendChild(dimField('Density', 'density', net.fluid.density, (v) => (net.fluid.density = v)));
     host.appendChild(numField('Viscosity (cP)', net.fluid.viscosity, (v) => (net.fluid.viscosity = v)));
